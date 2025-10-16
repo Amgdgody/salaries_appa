@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
 
 void main() {
@@ -15,67 +16,31 @@ class SalariesApp extends StatelessWidget {
       title: 'تطبيق الرواتب',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.light,
         primarySwatch: Colors.teal,
-        scaffoldBackgroundColor: const Color(0xFFF5F5F5),
         fontFamily: 'Roboto',
       ),
-      home: const AuthPage(),
+      home: const LoginPage(),
     );
   }
 }
 
-// صفحة الدخول
-class AuthPage extends StatefulWidget {
-  const AuthPage({super.key});
+// صفحة تسجيل الدخول
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<AuthPage> createState() => _AuthPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _AuthPageState extends State<AuthPage> {
-  final TextEditingController _username = TextEditingController();
-  final TextEditingController _password = TextEditingController();
-  bool isLoginMode = true;
-  String? savedUser;
-  String? savedPass;
+class _LoginPageState extends State<LoginPage> {
+  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _passController = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUser();
-  }
-
-  Future<void> _loadUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      savedUser = prefs.getString('username');
-      savedPass = prefs.getString('password');
-    });
-  }
-
-  Future<void> _register() async {
-    if (_username.text.isEmpty || _password.text.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', _username.text);
-    await prefs.setString('password', _password.text);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("تم إنشاء الحساب بنجاح ✅")),
-    );
-    setState(() {
-      isLoginMode = true;
-    });
-  }
-
-  Future<void> _login() async {
-    if (_username.text == savedUser && _password.text == savedPass) {
+  void _login() {
+    if (_userController.text.isNotEmpty && _passController.text.isNotEmpty) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const SalaryHomePage()),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ اسم المستخدم أو كلمة المرور غير صحيحة")),
+        MaterialPageRoute(builder: (context) => const SalaryHomePage()),
       );
     }
   }
@@ -83,44 +48,26 @@ class _AuthPageState extends State<AuthPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isLoginMode ? "تسجيل الدخول" : "مستخدم جديد"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('تسجيل الدخول')),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TextField(
-              controller: _username,
-              decoration: const InputDecoration(
-                labelText: 'اسم المستخدم',
-                border: OutlineInputBorder(),
-              ),
+              controller: _userController,
+              decoration: const InputDecoration(labelText: 'اسم المستخدم'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             TextField(
-              controller: _password,
+              controller: _passController,
+              decoration: const InputDecoration(labelText: 'كلمة المرور'),
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'كلمة المرور',
-                border: OutlineInputBorder(),
-              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: isLoginMode ? _login : _register,
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-              child: Text(isLoginMode ? "تسجيل الدخول" : "إنشاء حساب"),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() => isLoginMode = !isLoginMode);
-              },
-              child: Text(isLoginMode
-                  ? "إنشاء حساب جديد"
-                  : "العودة إلى تسجيل الدخول"),
+              onPressed: _login,
+              child: const Text('تسجيل الدخول'),
             ),
           ],
         ),
@@ -129,7 +76,7 @@ class _AuthPageState extends State<AuthPage> {
   }
 }
 
-// الصفحة الرئيسية (مع القائمة الجانبية)
+// الصفحة الرئيسية
 class SalaryHomePage extends StatefulWidget {
   const SalaryHomePage({super.key});
 
@@ -138,89 +85,85 @@ class SalaryHomePage extends StatefulWidget {
 }
 
 class _SalaryHomePageState extends State<SalaryHomePage> {
-  int selectedPage = 0; // 0=رواتب 1=ضرائب 2=مصروفات 3=ادخار
+  final TextEditingController _salaryController = TextEditingController();
+  final TextEditingController _taxController = TextEditingController();
+  final TextEditingController _expensesController = TextEditingController();
   List<Map<String, dynamic>> salaryRecords = [];
-  List<Map<String, dynamic>> taxRecords = [];
-  List<Map<String, dynamic>> expenseRecords = [];
-  List<Map<String, dynamic>> savingRecords = [];
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadRecords();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _saveRecords() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('salary_records', jsonEncode(salaryRecords));
+  }
+
+  Future<void> _loadRecords() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('salary_records');
+    if (data != null) {
+      setState(() {
+        salaryRecords = List<Map<String, dynamic>>.from(jsonDecode(data));
+      });
+    }
+  }
+
+  void _addRecord() {
+    if (_salaryController.text.isEmpty ||
+        _taxController.text.isEmpty ||
+        _expensesController.text.isEmpty) return;
+
+    final double salary = double.tryParse(_salaryController.text) ?? 0;
+    final double tax = double.tryParse(_taxController.text) ?? 0;
+    final double expenses = double.tryParse(_expensesController.text) ?? 0;
+    final double remaining = salary - tax - expenses;
+
     setState(() {
-      salaryRecords = _decode(prefs.getString('salary_records'));
-      taxRecords = _decode(prefs.getString('tax_records'));
-      expenseRecords = _decode(prefs.getString('expense_records'));
-      savingRecords = _decode(prefs.getString('saving_records'));
+      salaryRecords.add({
+        "salary": salary,
+        "tax": tax,
+        "expenses": expenses,
+        "remaining": remaining,
+        "date": DateTime.now().toString(),
+      });
+    });
+
+    _saveRecords();
+    _salaryController.clear();
+    _taxController.clear();
+    _expensesController.clear();
+  }
+
+  void _editRecord(int index) {
+    final record = salaryRecords[index];
+    _salaryController.text = record["salary"].toString();
+    _taxController.text = record["tax"].toString();
+    _expensesController.text = record["expenses"].toString();
+
+    setState(() {
+      salaryRecords.removeAt(index);
     });
   }
 
-  List<Map<String, dynamic>> _decode(String? data) {
-    if (data == null) return [];
-    return List<Map<String, dynamic>>.from(jsonDecode(data));
+  void _deleteRecord(int index) {
+    setState(() {
+      salaryRecords.removeAt(index);
+    });
+    _saveRecords();
   }
 
-  Future<void> _saveData(String key, List<Map<String, dynamic>> records) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, jsonEncode(records));
-  }
-
-  void _logout() async {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const AuthPage()),
-    );
-  }
+  double get totalRemaining =>
+      salaryRecords.fold(0, (sum, item) => sum + item['remaining']);
 
   @override
   Widget build(BuildContext context) {
-    Widget content;
-    switch (selectedPage) {
-      case 1:
-        content = RecordsPage(
-          title: "الضرائب",
-          keyName: 'tax_records',
-          records: taxRecords,
-          onChanged: (r) => setState(() => taxRecords = r),
-          onSave: _saveData,
-        );
-        break;
-      case 2:
-        content = RecordsPage(
-          title: "المصروفات",
-          keyName: 'expense_records',
-          records: expenseRecords,
-          onChanged: (r) => setState(() => expenseRecords = r),
-          onSave: _saveData,
-        );
-        break;
-      case 3:
-        content = RecordsPage(
-          title: "الادخار",
-          keyName: 'saving_records',
-          records: savingRecords,
-          onChanged: (r) => setState(() => savingRecords = r),
-          onSave: _saveData,
-        );
-        break;
-      default:
-        content = RecordsPage(
-          title: "الرواتب",
-          keyName: 'salary_records',
-          records: salaryRecords,
-          onChanged: (r) => setState(() => salaryRecords = r),
-          onSave: _saveData,
-        );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('📊 تطبيق الرواتب'),
+        centerTitle: true,
       ),
       drawer: Drawer(
         child: ListView(
@@ -230,160 +173,140 @@ class _SalaryHomePageState extends State<SalaryHomePage> {
               decoration: BoxDecoration(color: Colors.teal),
               child: Center(
                 child: Text(
-                  'القائمة الرئيسية',
-                  style: TextStyle(color: Colors.white, fontSize: 22),
+                  'إعدادات التطبيق',
+                  style: TextStyle(color: Colors.white, fontSize: 20),
                 ),
               ),
             ),
             ListTile(
               leading: const Icon(Icons.money),
-              title: const Text('الرواتب'),
-              onTap: () => setState(() => selectedPage = 0),
-            ),
-            ListTile(
-              leading: const Icon(Icons.account_balance),
-              title: const Text('الضرائب'),
-              onTap: () => setState(() => selectedPage = 1),
-            ),
-            ListTile(
-              leading: const Icon(Icons.shopping_cart),
-              title: const Text('المصروفات'),
-              onTap: () => setState(() => selectedPage = 2),
+              title: const Text('الضرائب والمصروفات'),
+              onTap: () {},
             ),
             ListTile(
               leading: const Icon(Icons.savings),
-              title: const Text('الادخار'),
-              onTap: () => setState(() => selectedPage = 3),
+              title: const Text('الادخار اليومي'),
+              onTap: () {},
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('مشاركة رابط التحميل'),
+              onTap: () {
+                Share.share(
+                  '📱 يمكنك تحميل تطبيق الرواتب من هنا:\nhttps://github.com/Amgdgody/salaries_appa/releases/latest/download/salaries_app.apk',
+                  subject: 'تطبيق الرواتب - Amjad Issa',
+                );
+              },
             ),
             const Divider(),
+            const ListTile(
+              leading: Icon(Icons.person),
+              title: Text('المطور: Amjad Issa'),
+            ),
             ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
+              leading: const Icon(Icons.logout),
               title: const Text('تسجيل الخروج'),
-              onTap: _logout,
+              onTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginPage()),
+                );
+              },
             ),
           ],
         ),
       ),
-      body: content,
-    );
-  }
-}
-
-// صفحة الجداول العامة
-class RecordsPage extends StatefulWidget {
-  final String title;
-  final String keyName;
-  final List<Map<String, dynamic>> records;
-  final Function(List<Map<String, dynamic>>) onChanged;
-  final Function(String, List<Map<String, dynamic>>) onSave;
-
-  const RecordsPage({
-    super.key,
-    required this.title,
-    required this.keyName,
-    required this.records,
-    required this.onChanged,
-    required this.onSave,
-  });
-
-  @override
-  State<RecordsPage> createState() => _RecordsPageState();
-}
-
-class _RecordsPageState extends State<RecordsPage> {
-  final TextEditingController _amount = TextEditingController();
-  final TextEditingController _note = TextEditingController();
-
-  void _add() {
-    if (_amount.text.isEmpty) return;
-    final double value = double.tryParse(_amount.text) ?? 0;
-    setState(() {
-      widget.records.add({
-        "amount": value,
-        "note": _note.text,
-        "date": DateTime.now().toString(),
-      });
-    });
-    widget.onChanged(widget.records);
-    widget.onSave(widget.keyName, widget.records);
-    _amount.clear();
-    _note.clear();
-  }
-
-  double get total => widget.records.fold(0, (sum, item) => sum + item['amount']);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Text(widget.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _amount,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'القيمة',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _note,
-                  decoration: const InputDecoration(
-                    labelText: 'ملاحظة (اختياري)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(onPressed: _add, child: const Text("إضافة")),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: widget.records.isEmpty
-                ? const Center(child: Text("لا توجد بيانات بعد"))
-                : ListView.builder(
-                    itemCount: widget.records.length,
-                    itemBuilder: (context, index) {
-                      final r = widget.records[index];
-                      return Card(
-                        child: ListTile(
-                          title: Text("${r['amount']} د.ل"),
-                          subtitle: Text(r['note']),
-                          trailing: Text(r['date'].substring(0, 10)),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.teal.shade50,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
               children: [
-                const Text('الإجمالي:',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                Text('${total.toStringAsFixed(2)} د.ل',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: TextField(
+                    controller: _salaryController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'الراتب', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _taxController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'الضرائب', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _expensesController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'المصروفات', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _addRecord,
+                  child: const Text('إضافة'),
+                ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 15),
+            Expanded(
+              child: salaryRecords.isEmpty
+                  ? const Center(child: Text("لا توجد سجلات بعد"))
+                  : ListView.builder(
+                      itemCount: salaryRecords.length,
+                      itemBuilder: (context, index) {
+                        final record = salaryRecords[index];
+                        return Card(
+                          child: ListTile(
+                            title: Text(
+                                "الراتب: ${record['salary']} | الباقي: ${record['remaining']}"),
+                            subtitle: Text(
+                                "الضرائب: ${record['tax']} | المصروفات: ${record['expenses']}"),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () => _editRecord(index),
+                                ),
+                                IconButton(
+                                  icon:
+                                      const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () => _deleteRecord(index),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('إجمالي الباقي:',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('${totalRemaining.toStringAsFixed(2)} د.ل',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
